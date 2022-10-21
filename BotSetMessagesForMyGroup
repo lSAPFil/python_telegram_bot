@@ -1,0 +1,262 @@
+import sys
+import time
+
+import telebot
+from telebot import types
+
+bot = telebot.TeleBot(token='5767387440:AAF4JKU2z9rXmywOzx_jIkLiocyce450F-s')
+
+#Буфер
+class Spam:
+    need_stop = False
+    info = ''
+    timeout = 0
+    dict_info={}
+    delete_info_name=''
+
+class Info:
+    chat_id = ''
+    dict_info_by_chat_id={}
+
+# dict_info_by_chat_id ={chat_id:(dict_info={topic:(info,info)}, dict_info={topic:(info,info)})}
+#Формат записи: dict={'message.chat.id':{'topic':['value']}}
+#dict={'chat_id_1':{'topic':['message1','message2'],'topic2':['message4','message5']},
+#      'chat_is_2':{'topic':['message1','message3']}}
+
+#Проверка на наличие данных в chat_id
+#if 'chat_id_1' in dict:
+#    print(dict['chat_id_1'])
+
+#Проверка на наличие данных в topic определенного чата
+#if 'message1' in dict['chat_id_1']['topic']:
+#    print(dict['chat_id_1']['topic'])
+
+#Добавление новой информации в топик определенного чата
+#if 'new_message' not in dict['chat_id_1']['topic']:
+#    dict['chat_id_1']['topic'].append('new_message')
+#    print(dict['chat_id_1']['topic'])
+
+#Добавление нового топика с новой информацией
+#if 'new_topic' not in dict['chat_id_1']:
+#    dict['chat_id_1']['new_topic'] =['new_message_for_new_topic']
+#    print(dict['chat_id_1']['new_topic'])
+
+
+
+
+help_info = '/distribution - создание сообщения для рассылки\n'\
+            '/help - информация о командах\n'\
+            '/stop - остановить рассылку сообщения\n'\
+            '/set_info - добавить информацию по теме\n'\
+            '/get_info - получить информацию по теме\n'\
+            '/get_topic - получить доступные темы\n'\
+            '/delete_info - удаление информации из темы\n'\
+            '/delete_topic - удаление темы'
+
+#Запуск рассылки информации
+def run_spam(chat, info: str, timeout: int):
+    while not Spam.need_stop:
+        bot.send_message(chat, info)
+        time.sleep(Spam.timeout)
+
+#Прием пользовательского таймаута
+def process_step_info(message):
+    Spam.info = message.text
+    msg = bot.send_message(message.chat.id, 'Введите таймаут в секундах')
+    bot.register_next_step_handler(msg, process_step_timeout)
+
+#Проверка данных о таймауте
+def process_step_timeout(message):
+    try:
+        Spam.timeout = int(message.text)
+        msg = bot.send_message(message.chat.id, 'Запускаю спам')
+        run_spam(msg.chat.id, Spam.info, Spam.timeout)
+    except ValueError:
+        msg = bot.send_message(message.chat.id,'Неверные данные. Повторите ввод')
+        bot.register_next_step_handler(msg, process_step_timeout)
+
+#Меню добалвения новых данных в инфоблок
+def set_info(message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    if message.text=='Создать новую':
+        msg =  bot.send_message(message.chat.id, 'Ожидаю данные в формате:\n\nТема\nСообщение', reply_markup=types.ReplyKeyboardRemove())
+        bot.register_next_step_handler(msg, save_info)
+    elif  message.text=='Выбрать существующую':
+        for i in Spam.dict_info:
+            markup.add(i)
+        msg=bot.send_message(message.chat.id, 'Выберите тему',  reply_markup=markup)
+        bot.register_next_step_handler(msg, have_save_info)
+
+    elif message.text=='Отмена':
+        bot.send_message(message.chat.id, 'Выход из меню добавления информации', reply_markup=types.ReplyKeyboardRemove())
+    else:
+        msg =bot.send_message(message.chat.id, 'Нет такого варианта ответа. Выберите доступный вариант кнопок')
+        ot.register_next_step_handler(msg, question_set_info)
+
+def have_save_info(message):
+    if message.text in Spam.dict_info:
+        Spam.delete_info_name=message.text
+        #Info.dict_info_by_chat_id.setdefault(chat.id, {})[delete_info_name]=[message.text]
+        msg=bot.send_message(message.chat.id, 'Введите информацию')
+        bot.register_next_step_handler(msg, save_info)
+
+    else:
+        msg = bot.send_message(message.chat.id, 'Неверные данные. Повторите ввод')
+        bot.register_next_step_handler(msg, set_info)
+
+#Запись пользовательских данных в инфоблок
+def save_info(message):
+    # Проверка: на существующую тему | Проверка: на существующую информацию в теме | Иначе создаем новый топик сновой информацией
+    if '\n' in message.text:
+         #Проверяем что данные правильно введены
+        try:
+            Spam.delete_info_name, value = message.text.split('\n',1)
+        except ValueError:
+            msg = bot.send_message(message.chat.id, 'Неверный формат данныех. Повторите ввод')
+            bot.register_next_step_handler(msg, save_info)
+
+        #   Проверяем существует ли вводимая тема   |   Проверяем что вводимые данные в теме отсутсвуют
+        if Spam.delete_info_name in Spam.dict_info and value not in Spam.dict_info[Spam.delete_info_name]:
+            Spam.dict_info[Spam.delete_info_name].append(value)
+            bot.send_message(message.chat.id, f'Новые данные по теме {Spam.delete_info_name} записаны.')
+            Spam.delete_info_name=''
+        #       Проверяем, что темы не существует и тогда создаем новую тему с новой информацией
+        elif Spam.delete_info_name not in Spam.dict_info:
+            Spam.dict_info[Spam.delete_info_name] = [value]
+            bot.send_message(message.chat.id, f'Новые данные по теме {Spam.delete_info_name} записаны.')
+            Spam.delete_info_name=''
+        #  Если тема существует и в ней есть вводимые данные
+        else:
+            bot.send_message(message.chat.id, f'Введеные данные уже существуют')
+            Spam.delete_info_name=''
+   # Введено только одно значение. Проверяем, что у нас есть существует топик| Проверяем, что вводимая информация в топике отсутсвует
+   #Топик присутствует(по умолчанию)  |          Вводимое сообщение отсутсвует в топике
+    elif Spam.delete_info_name !='' and message.text not in Spam.dict_info[Spam.delete_info_name]:
+        Spam.dict_info[Spam.delete_info_name].append(message.text)
+        bot.send_message(message.chat.id, f'Новые данные по теме {Spam.delete_info_name} записаны.')
+        Spam.delete_info_name=''
+        #Info.dict_info_by_chat_id.setdefault(chat.id, {})[delete_info_name]=[value]
+    else:
+        #Проверить, что у введенных данных есть топик и информация (проверить два случая: Когда мы вводим данные по существующему топику | Когда мы вводим данные по новому топику)
+        if Spam.delete_info_name!='':
+            bot.send_message(message.chat.id, 'Информация уже существует в данной теме')
+            Spam.delete_info_name=''
+        else:
+            msg = bot.send_message(message.chat.id, 'Неверные данные. Повторите ввод')
+            #Вводимые данные идут по существующему ключу
+            bot.register_next_step_handler(msg, save_info)
+            Spam.delete_info_name=''
+
+
+
+
+
+
+#Проверка на существование данных в инфоблоке
+def print_info(message):
+    if message.text in Spam.dict_info:
+        bot.send_message(message.chat.id, f'Информация по теме: {message.text}\n\n' + '\n'.join(Spam.dict_info[message.text]), reply_markup=types.ReplyKeyboardRemove())
+    else:
+        msg=bot.send_message(message.chat.id, 'Нет такой кнопки. Повторите ввод', get_info)
+
+#Удаление темы из инфоблока
+def button_action_topic_delete(message):
+    try:
+        Spam.dict_info.pop(message.text)
+        bot.send_message(message.chat.id, f'Тема {message.text} удалена', reply_markup=types.ReplyKeyboardRemove())
+    except ValueError:
+        bot.send_message(message.chat.id, f'Удаление темы {message.text} безуспешно', reply_markup=types.ReplyKeyboardRemove())
+
+#Вывод существующих тем для удаление
+def button_action_info(message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    Spam.delete_info_name=message.text
+    for i in Spam.dict_info[message.text]:
+        markup.add(i)
+    msg=bot.send_message(message.chat.id, 'Выберите ту информацию которую хотите удалить',  reply_markup=markup)
+    bot.register_next_step_handler(msg, button_action_info_delete)
+
+#Удаление данных из темы
+def button_action_info_delete(message):
+    try:
+        Spam.dict_info[Spam.delete_info_name].remove(message.text)
+        bot.send_message(message.chat.id, f'Информация {message.text} удалена', reply_markup=types.ReplyKeyboardRemove())
+    except ValueError:
+        bot.send_message(message.chat.id, f'Удаление информации {message.text} безуспешно', reply_markup=types.ReplyKeyboardRemove())
+
+
+@bot.message_handler(commands=['distribution'])
+def start(message):
+    msg = bot.send_message(message.chat.id, 'Активация.\nОжидаю данные')
+    bot.register_next_step_handler(msg, process_step_info)
+
+
+@bot.message_handler(commands=['stop'])
+def stop(message):
+    bot.send_message(message.chat.id, 'Диактивация')
+    Spam.need_stop = True
+
+@bot.message_handler(commands=['help','start'])
+def help(message):
+    bot.send_message(message.chat.id, help_info )
+
+
+@bot.message_handler(commands=['set_info'])
+def question_set_info(message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add('Создать новую','Выбрать существующую')
+    print(type(markup),f', {markup}')
+    msg = bot.send_message(message.chat.id,'Создать новую тему или выбрать существующую?', reply_markup=markup)
+    bot.register_next_step_handler(msg, set_info)
+
+@bot.message_handler(commands=['get_info'])
+def get_info(message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+
+    if len(Spam.dict_info)>0:
+        for i in Spam.dict_info:
+            markup.add(i)
+        msg = bot.send_message(message.chat.id, 'Выберите тему информации',  reply_markup=markup)
+        bot.register_next_step_handler(msg, print_info)
+    else:
+        markup.add('Создать новую', 'Отмена')
+        msg= bot.send_message(message.chat.id, 'Нет существующих тем.',  reply_markup=markup)
+        bot.register_next_step_handler(msg, set_info)
+
+@bot.message_handler(commands=['get_topic'])
+def get_topic(message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    if len(Spam.dict_info)==0:
+        markup.add('Создать новую', 'Отмена')
+        msg= bot.send_message(message.chat.id, 'Нет существующих тем.',  reply_markup=markup)
+        bot.register_next_step_handler(msg, set_info)
+    else:
+        bot.send_message(message.chat.id, 'Существующие темы:\n'+'\n'.join(Spam.dict_info.keys()))
+
+@bot.message_handler(commands=['delete_topic'])
+def delete_topic(message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    if len(Spam.dict_info)>0:
+        for i in Spam.dict_info:
+            markup.add(i)
+        msg = bot.send_message(message.chat.id, 'Выберите тему для удаления',  reply_markup=markup)
+        bot.register_next_step_handler(msg, button_action_topic_delete)
+    else:
+        bot.send_message(message.chat.id, 'Нет существующих тем.',  reply_markup=markup)
+
+
+@bot.message_handler(commands=['delete_info'])
+def delete_info(message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    if len(Spam.dict_info)>0:
+        for i in Spam.dict_info:
+            markup.add(i)
+        msg = bot.send_message(message.chat.id, 'Выберите тему информации',  reply_markup=markup)
+        bot.register_next_step_handler(msg, button_action_info)
+    else:
+        bot.send_message(message.chat.id, 'Информация по теме пуста',  reply_markup=markup)
+
+
+
+
+bot.polling()
